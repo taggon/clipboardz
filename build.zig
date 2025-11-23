@@ -4,10 +4,18 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Fetch zig-objc dependency
+    const zig_objc_dep = b.dependency("zig_objc", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zig_objc_mod = zig_objc_dep.module("objc");
+
     // Define the module for external consumption
     const clipboardz_mod = b.addModule("clipboardz", .{
         .root_source_file = b.path("src/main.zig"),
     });
+    clipboardz_mod.addImport("objc", zig_objc_mod);
 
     // Define the static library
     const lib = b.addLibrary(.{
@@ -19,6 +27,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    lib.root_module.addImport("objc", zig_objc_mod);
 
     if (target.result.os.tag == .macos) {
         lib.linkSystemLibrary("objc");
@@ -46,6 +55,7 @@ pub fn build(b: *std.Build) void {
 
     // Import the clipboardz module
     exe.root_module.addImport("clipboardz", clipboardz_mod);
+    exe.root_module.addImport("objc", zig_objc_mod);
 
     if (target.result.os.tag == .macos) {
         exe.linkSystemLibrary("objc");
@@ -75,6 +85,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    lib_unit_tests.root_module.addImport("objc", zig_objc_mod);
 
     if (target.result.os.tag == .macos) {
         lib_unit_tests.linkSystemLibrary("objc");
