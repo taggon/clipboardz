@@ -1,13 +1,17 @@
 const std = @import("std");
 const types = @import("../types.zig");
-const objc = @import("objc");
+const objc_lib = @import("macos_objc.zig");
 
 const ClipboardError = types.ClipboardError;
 const ClipboardContent = types.ClipboardContent;
+const objc = objc_lib.objc;
 
-fn getPasteboard() !objc.Object {
-    const NSPasteboardClass = objc.getClass("NSPasteboard") orelse return error.SystemError;
-    return NSPasteboardClass.msgSend(objc.Object, objc.sel("generalPasteboard"), .{});
+fn getPasteboard() !objc.id {
+    const NSPasteboard = objc.objc_getClass("NSPasteboard");
+    if (NSPasteboard == null) return error.SystemError;
+
+    const generalPasteboardSel = objc.sel_registerName("generalPasteboard");
+    return objc_lib.msgSend_noArgs(NSPasteboard, generalPasteboardSel);
 }
 
 pub fn read(allocator: std.mem.Allocator, content: ClipboardContent) ClipboardError![]u8 {
@@ -19,26 +23,22 @@ pub fn read(allocator: std.mem.Allocator, content: ClipboardContent) ClipboardEr
         .html => "public.html",
     };
 
-    const NSStringClass = objc.getClass("NSString") orelse return error.SystemError;
-    const targetNsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{targetType.ptr});
+    const targetNsStr = objc_lib.NSStringFromSlice(targetType) catch return error.OutOfMemory;
+    defer objc_lib.msgSend_void(targetNsStr, objc.sel_registerName("release"));
 
-    const nsStr = pasteboard.msgSend(objc.Object, objc.sel("stringForType:"), .{targetNsStr});
+    const stringForTypeSel = objc.sel_registerName("stringForType:");
+    const nsStr = objc_lib.msgSend_id(pasteboard, stringForTypeSel, targetNsStr);
 
-    if (nsStr.value == null) return error.SystemError;
+    if (nsStr == null) return error.SystemError;
 
-    const utf8Ptr = nsStr.msgSend(?[*]const u8, objc.sel("UTF8String"), .{});
-    if (utf8Ptr) |ptr| {
-        const len = nsStr.msgSend(usize, objc.sel("lengthOfBytesUsingEncoding:"), .{@as(usize, 4)}); // 4 = NSUTF8StringEncoding
-        return allocator.dupe(u8, ptr[0..len]);
-    }
-
-    return error.SystemError;
+    return objc_lib.SliceFromNSString(allocator, nsStr);
 }
 
 pub fn write(_: std.mem.Allocator, content: ClipboardContent, data: []const u8) ClipboardError!void {
     const pasteboard = getPasteboard() catch return error.SystemError;
 
-    _ = pasteboard.msgSend(isize, objc.sel("clearContents"), .{});
+    const clearContentsSel = objc.sel_registerName("clearContents");
+    _ = objc_lib.msgSend_int(pasteboard, clearContentsSel);
 
     const targetType = switch (content) {
         .text => "public.utf8-plain-text",
@@ -46,16 +46,25 @@ pub fn write(_: std.mem.Allocator, content: ClipboardContent, data: []const u8) 
         .html => "public.html",
     };
 
-    const NSStringClass = objc.getClass("NSString") orelse return error.SystemError;
-    const targetNsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{targetType.ptr});
+    const targetNsStr = objc_lib.NSStringFromSlice(targetType) catch return error.OutOfMemory;
+    defer objc_lib.msgSend_void(targetNsStr, objc.sel_registerName("release"));
 
-    const NSArrayClass = objc.getClass("NSArray") orelse return error.SystemError;
-    const typesArray = NSArrayClass.msgSend(objc.Object, objc.sel("arrayWithObject:"), .{targetNsStr});
+    const declareTypesSel = objc.sel_registerName("declareTypes:owner:");
+    const arrayWithObjectSel = objc.sel_registerName("arrayWithObject:");
+    const nsArrayClass = objc.objc_getClass("NSArray");
 
-    _ = pasteboard.msgSend(isize, objc.sel("declareTypes:owner:"), .{typesArray, null});
+    // Create array with target type
+    const FnArray = *const fn (objc.id, objc.SEL, objc.id) callconv(.c) objc.id;
+    const arrayWithObject = @as(FnArray, @ptrCast(&objc.objc_msgSend));
+    const typesArray = arrayWithObject(nsArrayClass, arrayWithObjectSel, targetNsStr);
 
-    const nsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{data.ptr});
-    const ret = pasteboard.msgSend(bool, objc.sel("setString:forType:"), .{nsStr, targetNsStr});
+    _ = objc_lib.msgSend_int_id_id(pasteboard, declareTypesSel, typesArray, null);
+
+    const setStringSel = objc.sel_registerName("setString:forType:");
+    const nsStr = objc_lib.NSStringFromSlice(data) catch return error.OutOfMemory;
+    defer objc_lib.msgSend_void(nsStr, objc.sel_registerName("release"));
+
+    const ret = objc_lib.msgSend_bool_id_id(pasteboard, setStringSel, nsStr, targetNsStr);
     if (!ret) return error.SystemError;
 }
 
@@ -63,13 +72,30 @@ pub fn writeMultiple(_: std.mem.Allocator, items: []const types.ClipboardItem) C
     if (items.len == 0) return error.InvalidInput;
     const pasteboard = getPasteboard() catch return error.SystemError;
 
-    _ = pasteboard.msgSend(isize, objc.sel("clearContents"), .{});
+    const clearContentsSel = objc.sel_registerName("clearContents");
+    _ = objc_lib.msgSend_int(pasteboard, clearContentsSel);
 
-    const NSMutableArrayClass = objc.getClass("NSMutableArray") orelse return error.SystemError;
-    const NSStringClass = objc.getClass("NSString") orelse return error.SystemError;
+    const NSMutableArray = objc.objc_getClass("NSMutableArray");
+    if (NSMutableArray == null) return error.SystemError;
 
-    var mutArray = NSMutableArrayClass.msgSend(objc.Object, objc.sel("alloc"), .{});
-    mutArray = mutArray.msgSend(objc.Object, objc.sel("initWithCapacity:"), .{items.len});
+    const allocSel = objc.sel_registerName("alloc");
+    const initWithCapacitySel = objc.sel_registerName("initWithCapacity:");
+    const addObjectSel = objc.sel_registerName("addObject:");
+    const objectAtIndexSel = objc.sel_registerName("objectAtIndex:");
+    const releaseSel = objc.sel_registerName("release");
+
+    // alloc/initWithCapacity:
+    const FnAlloc = *const fn (objc.id, objc.SEL) callconv(.c) objc.id;
+    const FnInitCap = *const fn (objc.id, objc.SEL, usize) callconv(.c) objc.id;
+    const FnAdd = *const fn (objc.id, objc.SEL, objc.id) callconv(.c) void;
+    const FnObjectAtIndex = *const fn (objc.id, objc.SEL, usize) callconv(.c) objc.id;
+
+    const mutArrayAlloc = @as(FnAlloc, @ptrCast(&objc.objc_msgSend));
+    var mutArray = mutArrayAlloc(NSMutableArray, allocSel);
+    const mutArrayInit = @as(FnInitCap, @ptrCast(&objc.objc_msgSend));
+    mutArray = mutArrayInit(mutArray, initWithCapacitySel, items.len);
+
+    const addFunc = @as(FnAdd, @ptrCast(&objc.objc_msgSend));
 
     // Populate types array with UTI NSStrings for each item
     for (items) |it| {
@@ -79,29 +105,47 @@ pub fn writeMultiple(_: std.mem.Allocator, items: []const types.ClipboardItem) C
             .html => "public.html",
         };
 
-        const targetNsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{targetType.ptr});
-        _ = mutArray.msgSend(void, objc.sel("addObject:"), .{targetNsStr});
+        const targetNsStr = objc_lib.NSStringFromSlice(targetType) catch return error.OutOfMemory;
+        // addObject: will retain the object, so release our reference afterwards
+        addFunc(mutArray, addObjectSel, targetNsStr);
+        objc_lib.msgSend_void(targetNsStr, releaseSel);
     }
 
-    _ = pasteboard.msgSend(isize, objc.sel("declareTypes:owner:"), .{mutArray, null});
+    const declareTypesSel = objc.sel_registerName("declareTypes:owner:");
+    _ = objc_lib.msgSend_int_id_id(pasteboard, declareTypesSel, mutArray, null);
+
+    const setStringSel = objc.sel_registerName("setString:forType:");
+    const objectAtIndex = @as(FnObjectAtIndex, @ptrCast(&objc.objc_msgSend));
 
     // For each item, fetch the corresponding UTI NSString from the array and set the string for that type
-    for (items, 0..) |it, i| {
-        const typeObj = mutArray.msgSend(objc.Object, objc.sel("objectAtIndex:"), .{i});
+    var i: usize = 0;
+    while (i < items.len) : (i += 1) {
+        const it = items[i];
+        const typeObj = objectAtIndex(mutArray, objectAtIndexSel, i);
 
-        const nsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{it.data.ptr});
-        const ret = pasteboard.msgSend(bool, objc.sel("setString:forType:"), .{nsStr, typeObj});
+        const nsStr = objc_lib.NSStringFromSlice(it.data) catch return error.OutOfMemory;
+        const ret = objc_lib.msgSend_bool_id_id(pasteboard, setStringSel, nsStr, typeObj);
+        // release our created data string
+        objc_lib.msgSend_void(nsStr, releaseSel);
         if (!ret) {
+            // release array before returning
+            objc_lib.msgSend_void(mutArray, releaseSel);
             return error.SystemError;
         }
     }
+
+    // release the NSMutableArray we created
+    objc_lib.msgSend_void(mutArray, releaseSel);
 }
 
 pub fn has(content: ClipboardContent) bool {
     const pasteboard = getPasteboard() catch return false;
-    const typesObj = pasteboard.msgSend(objc.Object, objc.sel("types"), .{});
+    const typesSel = objc.sel_registerName("types");
+    const typesObj = objc_lib.msgSend_noArgs(pasteboard, typesSel);
 
-    if (typesObj.value == null) return false;
+    if (typesObj == null) return false;
+
+    const containsObjectSel = objc.sel_registerName("containsObject:");
 
     const targetType = switch (content) {
         .text => "public.utf8-plain-text",
@@ -109,15 +153,19 @@ pub fn has(content: ClipboardContent) bool {
         .html => "public.html",
     };
 
-    const NSStringClass = objc.getClass("NSString") orelse return false;
-    const targetNsStr = NSStringClass.msgSend(objc.Object, objc.sel("stringWithUTF8String:"), .{targetType.ptr});
+    const targetNsStr = objc_lib.NSStringFromSlice(targetType) catch return false;
 
-    return typesObj.msgSend(bool, objc.sel("containsObject:"), .{targetNsStr});
+    // containsObject returns BOOL (signed char or bool)
+    const Fn = *const fn (objc.id, objc.SEL, objc.id) callconv(.c) bool;
+    const func = @as(Fn, @ptrCast(&objc.objc_msgSend));
+    return func(typesObj, containsObjectSel, targetNsStr);
 }
 
 pub fn clear(_: std.mem.Allocator) ClipboardError!void {
     const pasteboard = getPasteboard() catch return error.SystemError;
-    _ = pasteboard.msgSend(isize, objc.sel("clearContents"), .{});
+    const clearContentsSel = objc.sel_registerName("clearContents");
+    _ = objc_lib.msgSend_int(pasteboard, clearContentsSel);
+    return;
 }
 
 test "macos writeMultiple empty returns InvalidInput" {

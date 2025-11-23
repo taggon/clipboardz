@@ -31,7 +31,53 @@ const clipboardz = b.dependency("clipboardz", .{
 exe.root_module.addImport("clipboardz", clipboardz.module("clipboardz"));
 ```
 
-> **Note**: On macOS, you need to link `objc`, `Foundation`, and `AppKit`. On Linux, you need to link `X11` and `c`.
+### Platform-Specific Linking
+
+Different platforms require different system libraries to be linked. Here's how to configure your `build.zig`:
+
+```zig
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const exe = b.addExecutable(.{
+        .name = "my-app",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add clipboardz dependency
+    const clipboardz = b.dependency("clipboardz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("clipboardz", clipboardz.module("clipboardz"));
+
+    // Link platform-specific libraries
+    if (target.result.os.tag == .macos) {
+        exe.linkSystemLibrary("objc");
+        exe.linkFramework("Foundation");
+        exe.linkFramework("AppKit");
+    } else if (target.result.os.tag == .linux) {
+        exe.linkSystemLibrary("X11");
+        exe.linkLibC();
+    } else if (target.result.os.tag == .windows) {
+        exe.linkSystemLibrary("user32");
+    }
+
+    b.installArtifact(exe);
+}
+```
+
+**Linking Requirements by Platform:**
+
+- **macOS**: `objc` (Objective-C runtime), `Foundation`, `AppKit` frameworks
+  - Used to access `NSPasteboard` for clipboard operations
+- **Linux**: `X11` library, `libc`
+  - Used to interact with X11 clipboard (primary and clipboard selections)
+- **Windows**: `user32` library
+  - Used for Win32 clipboard API
 
 ## Usage
 
