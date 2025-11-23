@@ -54,6 +54,8 @@ pub fn build(b: *std.Build) void {
     } else if (target.result.os.tag == .linux) {
         exe.linkSystemLibrary("X11");
         exe.linkLibC();
+    } else if (target.result.os.tag == .windows) {
+        exe.linkLibC();
     }
 
     b.installArtifact(exe);
