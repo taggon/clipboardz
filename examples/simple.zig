@@ -36,17 +36,24 @@ pub fn main() !void {
 }
 
 fn sleepMs(ms: u64) void {
+    const c = @cImport({
+        if (builtin.os.tag == .linux) {
+            @cInclude("time.h");
+        } else if (builtin.os.tag == .macos) {
+            @cInclude("unistd.h");
+        } else if (builtin.os.tag == .windows) {
+            @cInclude("windows.h");
+        }
+    });
+
     if (builtin.os.tag == .linux) {
-        const timespec = std.os.linux.timespec{
-            .tv_sec = 0,
-            .tv_nsec = @as(isize, @intCast(ms * 1_000_000)),
-        };
-        _ = std.os.linux.nanosleep(&timespec, null);
+        var ts: c.timespec = undefined;
+        ts.tv_sec = 0;
+        ts.tv_nsec = @as(c_long, @intCast(ms * 1_000_000));
+        _ = c.nanosleep(&ts, null);
     } else if (builtin.os.tag == .macos) {
-        const c = @cImport(@cInclude("unistd.h"));
         _ = c.usleep(@intCast(ms * 1000));
     } else if (builtin.os.tag == .windows) {
-        const c = @cImport(@cInclude("windows.h"));
         c.Sleep(@intCast(ms));
     }
 }
