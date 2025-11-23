@@ -14,19 +14,19 @@ const SIZE_T = usize;
 // Clipboard formats
 const CF_TEXT = 1;
 
-extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.stdcall) BOOL;
-extern "user32" fn CloseClipboard() callconv(.stdcall) BOOL;
-extern "user32" fn EmptyClipboard() callconv(.stdcall) BOOL;
-extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?HANDLE) callconv(.stdcall) ?HANDLE;
-extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.stdcall) ?HANDLE;
-extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.stdcall) BOOL;
-extern "user32" fn RegisterClipboardFormatA(lpszFormat: LPCSTR) callconv(.stdcall) UINT;
+extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.winapi) BOOL;
+extern "user32" fn CloseClipboard() callconv(.winapi) BOOL;
+extern "user32" fn EmptyClipboard() callconv(.winapi) BOOL;
+extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?HANDLE) callconv(.winapi) ?HANDLE;
+extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.winapi) ?HANDLE;
+extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.winapi) BOOL;
+extern "user32" fn RegisterClipboardFormatA(lpszFormat: LPCSTR) callconv(.winapi) UINT;
 
-extern "kernel32" fn GlobalAlloc(uFlags: UINT, dwBytes: SIZE_T) callconv(.stdcall) ?HANDLE;
-extern "kernel32" fn GlobalLock(hMem: ?HANDLE) callconv(.stdcall) ?*anyopaque;
-extern "kernel32" fn GlobalUnlock(hMem: ?HANDLE) callconv(.stdcall) BOOL;
-extern "kernel32" fn GlobalFree(hMem: ?HANDLE) callconv(.stdcall) ?HANDLE;
-extern "kernel32" fn GlobalSize(hMem: ?HANDLE) callconv(.stdcall) SIZE_T;
+extern "kernel32" fn GlobalAlloc(uFlags: UINT, dwBytes: SIZE_T) callconv(.winapi) ?HANDLE;
+extern "kernel32" fn GlobalLock(hMem: ?HANDLE) callconv(.winapi) ?*anyopaque;
+extern "kernel32" fn GlobalUnlock(hMem: ?HANDLE) callconv(.winapi) BOOL;
+extern "kernel32" fn GlobalFree(hMem: ?HANDLE) callconv(.winapi) ?HANDLE;
+extern "kernel32" fn GlobalSize(hMem: ?HANDLE) callconv(.winapi) SIZE_T;
 
 const GMEM_MOVEABLE = 0x0002;
 
