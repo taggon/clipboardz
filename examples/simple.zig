@@ -2,6 +2,9 @@ const std = @import("std");
 const clipboard = @import("clipboardz");
 const builtin = @import("builtin");
 
+// Windows Sleep function
+extern "kernel32" fn Sleep(dwMilliseconds: c_ulong) callconv(.winapi) void;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -13,7 +16,8 @@ pub fn main() !void {
     try cb.writeText(text_to_write);
     std.debug.print("Wrote to clipboard: {s}\n", .{text_to_write});
 
-    // Wait for clipboard server to be ready (especially important on Linux with xvfb)
+    // Add a short delay just in case to avoid race conditions with the clipboard server.
+    // (e.g. xvfb on Linux).
     sleepMs(200);
 
     const read_back = try cb.readText();
@@ -25,7 +29,7 @@ pub fn main() !void {
     try cb.writeHTML(html_content);
     std.debug.print("Wrote HTML to clipboard: {s}\n", .{html_content});
 
-    // Wait for clipboard server to be ready
+    // Add a short delay just in case to avoid race conditions with the clipboard server.
     sleepMs(200);
 
     if (cb.has(.html)) {
@@ -36,24 +40,10 @@ pub fn main() !void {
 }
 
 fn sleepMs(ms: u64) void {
-    const c = @cImport({
-        if (builtin.os.tag == .linux) {
-            @cInclude("time.h");
-        } else if (builtin.os.tag == .macos) {
-            @cInclude("unistd.h");
-        } else if (builtin.os.tag == .windows) {
-            @cInclude("windows.h");
-        }
-    });
-
-    if (builtin.os.tag == .linux) {
-        var ts: c.timespec = undefined;
-        ts.tv_sec = 0;
-        ts.tv_nsec = @as(c_long, @intCast(ms * 1_000_000));
-        _ = c.nanosleep(&ts, null);
-    } else if (builtin.os.tag == .macos) {
-        _ = c.usleep(@intCast(ms * 1000));
-    } else if (builtin.os.tag == .windows) {
-        c.Sleep(@intCast(ms));
+    if (builtin.os.tag == .windows) {
+        Sleep(@intCast(ms));
+    } else {
+        // Use std.posix.nanosleep for POSIX systems (Linux, macOS)
+        std.posix.nanosleep(0, @intCast(ms * 1_000_000));
     }
 }
