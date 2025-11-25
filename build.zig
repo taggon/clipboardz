@@ -53,6 +53,7 @@ pub fn build(b: *std.Build) void {
         exe.linkFramework("AppKit");
     } else if (target.result.os.tag == .linux) {
         exe.linkSystemLibrary("X11");
+        exe.linkLibC();
     }
 
     b.installArtifact(exe);
