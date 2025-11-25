@@ -14,19 +14,19 @@ const SIZE_T = usize;
 // Clipboard formats
 const CF_TEXT = 1;
 
-extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(windows.WINAPI) BOOL;
-extern "user32" fn CloseClipboard() callconv(windows.WINAPI) BOOL;
-extern "user32" fn EmptyClipboard() callconv(windows.WINAPI) BOOL;
-extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?HANDLE) callconv(windows.WINAPI) ?HANDLE;
-extern "user32" fn GetClipboardData(uFormat: UINT) callconv(windows.WINAPI) ?HANDLE;
-extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(windows.WINAPI) BOOL;
-extern "user32" fn RegisterClipboardFormatA(lpszFormat: LPCSTR) callconv(windows.WINAPI) UINT;
+extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.winapi) BOOL;
+extern "user32" fn CloseClipboard() callconv(.winapi) BOOL;
+extern "user32" fn EmptyClipboard() callconv(.winapi) BOOL;
+extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?HANDLE) callconv(.winapi) ?HANDLE;
+extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.winapi) ?HANDLE;
+extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.winapi) BOOL;
+extern "user32" fn RegisterClipboardFormatA(lpszFormat: LPCSTR) callconv(.winapi) UINT;
 
-extern "kernel32" fn GlobalAlloc(uFlags: UINT, dwBytes: SIZE_T) callconv(windows.WINAPI) ?HANDLE;
-extern "kernel32" fn GlobalLock(hMem: ?HANDLE) callconv(windows.WINAPI) ?*anyopaque;
-extern "kernel32" fn GlobalUnlock(hMem: ?HANDLE) callconv(windows.WINAPI) BOOL;
-extern "kernel32" fn GlobalFree(hMem: ?HANDLE) callconv(windows.WINAPI) ?HANDLE;
-extern "kernel32" fn GlobalSize(hMem: ?HANDLE) callconv(windows.WINAPI) SIZE_T;
+extern "kernel32" fn GlobalAlloc(uFlags: UINT, dwBytes: SIZE_T) callconv(.winapi) ?HANDLE;
+extern "kernel32" fn GlobalLock(hMem: ?HANDLE) callconv(.winapi) ?*anyopaque;
+extern "kernel32" fn GlobalUnlock(hMem: ?HANDLE) callconv(.winapi) BOOL;
+extern "kernel32" fn GlobalFree(hMem: ?HANDLE) callconv(.winapi) ?HANDLE;
+extern "kernel32" fn GlobalSize(hMem: ?HANDLE) callconv(.winapi) SIZE_T;
 
 const GMEM_MOVEABLE = 0x0002;
 
@@ -49,8 +49,7 @@ pub fn read(allocator: std.mem.Allocator, content: types.ClipboardContent) Clipb
     const hMem = GetClipboardData(format_id);
     if (hMem == null) return error.SystemError;
 
-    const ptr = GlobalLock(hMem);
-    if (ptr == null) return error.SystemError;
+    const ptr = GlobalLock(hMem) orelse return error.SystemError;
     defer _ = GlobalUnlock(hMem);
 
     const src = @as([*:0]const u8, @ptrCast(ptr));
@@ -75,11 +74,10 @@ pub fn write(allocator: std.mem.Allocator, content: types.ClipboardContent, data
     if (hMem == null) return error.OutOfMemory;
 
     {
-        const ptr = GlobalLock(hMem);
-        if (ptr == null) {
+        const ptr = GlobalLock(hMem) orelse {
             _ = GlobalFree(hMem);
             return error.SystemError;
-        }
+        };
         defer _ = GlobalUnlock(hMem);
 
         const dest = @as([*]u8, @ptrCast(ptr));
@@ -111,11 +109,10 @@ pub fn writeMultiple(allocator: std.mem.Allocator, items: []const types.Clipboar
         if (hMem == null) return error.OutOfMemory;
 
         {
-            const ptr = GlobalLock(hMem);
-            if (ptr == null) {
+            const ptr = GlobalLock(hMem) orelse {
                 _ = GlobalFree(hMem);
                 return error.SystemError;
-            }
+            };
             defer _ = GlobalUnlock(hMem);
 
             const dest = @as([*]u8, @ptrCast(ptr));
